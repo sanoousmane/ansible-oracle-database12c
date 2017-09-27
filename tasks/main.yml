@@ -1,0 +1,82 @@
+---
+# tasks file for ansible-oracle-database12c
+
+
+- name: Update all packages
+  yum: name=* state=latest
+
+- name: Copy file 98-oracle.conf
+  template:
+    src: 98-oracle.conf.j2
+    dest: /etc/sysctl.d/98-oracle.conf
+
+- name: execute sysctl
+  command: /sbin/sysctl -p
+
+- name: Copy file oracle-rdbms-server-12cR1-preinstall.conf
+  template:
+    src: oracle-rdbms-server-12cR1-preinstall.conf.j2
+    dest: /etc/security/limits.d/oracle-rdbms-server-12cR1-preinstall.conf
+
+- name: Install required packages
+  yum:
+    pkg: "{{ item }}"
+    state: installed
+  with_items: "{{ packages_required }}"
+
+- name: Add groups 
+  group:
+    gid: "{{ item.gid }}"
+    name: "{{ item.name }}"
+    state: present
+  with_items:
+    - {gid: '54321', name: 'oinstall'}
+    - {gid: '54322', name: 'dba'}
+    - {gid: '54323', name: 'oper'}
+    - {gid: '54324', name: 'backupdba'}
+    - {gid: '54325', name: 'dgdba'}
+    - {gid: '54326', name: 'kmdba'}
+    - {gid: '54327', name: 'asmdba'}
+    - {gid: '54328', name: 'asmoper'}
+    - {gid: '54329', name: 'asmadmin'}
+
+- name: Add user 
+  user:
+    name: oracle
+    uid: 54321
+    group: oinstall
+    groups: dba,oper
+    password: MDhjYWNkMzQ1NTA1MmZlN2Y2MGNiZTYz
+
+- name: adjust selinux on server
+  selinux:
+    policy: target
+    state: permissive
+
+- name: disable firewalld on server
+  service:
+    name: firewalld
+    state: stopped
+    enabled: no
+
+- name: Restart server
+  shell: sleep 2 && /sbin/shutdown -r now "Ansible system package upgraded"
+  async: 1
+  poll: 0
+
+- name: wait for server {{ ansible_ssh_host | default(inventory_hostname) }} to come back online
+  wait_for:
+    port: 22
+    delay: 60
+    search_regex: OpenSSH
+    host: '{{ (ansible_ssh_host|default(ansible_host))|default(inventory_hostname) }}'
+  connection: local
+
+- name: create directory /u01/app/oracle/product/12.1.3.0/db_1
+  file:
+    path: /u01/app/oracle/product/12.1.3.0/db_1
+    state: directory
+    owner: oracle
+    group: oinstall
+    mode: 0755
+    recurse: yes
