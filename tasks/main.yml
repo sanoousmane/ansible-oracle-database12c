@@ -1,11 +1,11 @@
----
+
 # tasks file for ansible-oracle-database12c
 
 
 - name: Update all packages
   yum: name=* state=latest
 
-- name: Copy file 98-oracle.conf
+- name: Copy file 98-oracle.conf in sysctl.d
   template:
     src: 98-oracle.conf.j2
     dest: /etc/sysctl.d/98-oracle.conf
@@ -13,10 +13,10 @@
 - name: execute sysctl
   command: /sbin/sysctl -p
 
-- name: Copy file oracle-rdbms-server-12cR1-preinstall.conf
+- name: Copy file oracle-rdbms-server-12cR2-preinstall.conf
   template:
-    src: oracle-rdbms-server-12cR1-preinstall.conf.j2
-    dest: /etc/security/limits.d/oracle-rdbms-server-12cR1-preinstall.conf
+    src: oracle-rdbms-server-12cR2-preinstall.conf.j2
+    dest: /etc/security/limits.d/oracle-rdbms-server-12cR2-preinstall.conf
 
 - name: Install required packages
   yum:
@@ -39,14 +39,17 @@
     - {gid: '54327', name: 'asmdba'}
     - {gid: '54328', name: 'asmoper'}
     - {gid: '54329', name: 'asmadmin'}
+    - {gid: '54330', name: 'racdba'}
 
 - name: Add user 
   user:
     name: oracle
     uid: 54321
+    state: present
+    createhome: yes
     group: oinstall
-    groups: dba,oper
-    password: MDhjYWNkMzQ1NTA1MmZlN2Y2MGNiZTYz
+    groups: dba,oper,backupdba,dgdba,kmdba,racdba
+    password: oraclepass
 
 - name: adjust selinux on server
   selinux:
@@ -67,16 +70,56 @@
 - name: wait for server {{ ansible_ssh_host | default(inventory_hostname) }} to come back online
   wait_for:
     port: 22
-    delay: 60
+    delay: 40
     search_regex: OpenSSH
     host: '{{ (ansible_ssh_host|default(ansible_host))|default(inventory_hostname) }}'
   connection: local
 
-- name: create directory /u01/app/oracle/product/12.1.3.0/db_1
+- name: create directory /u01/app/oracle/product/12.2.0.1/db_1
   file:
-    path: /u01/app/oracle/product/12.1.3.0/db_1
+    path: /u01/app/oracle/product/12.2.0.1/db_1
     state: directory
     owner: oracle
     group: oinstall
     mode: 0755
     recurse: yes
+
+- name: create scripts folder
+  file:
+    path: /home/oracle/scripts
+    state: directory
+    owner: oracle
+    group: oinstall
+    mode: 0755
+
+- name: copy setEnv file in /home/oracle/scripts
+  copy:
+    src: setEnv.sh
+    dest: /home/oracle/scripts
+    owner: oracle
+    group: oinstall
+    mode: u=rwx,g=r,o=r
+
+- name: Add a reference to the "setEnv.sh" file at the end of the "/home/oracle/.bash_profile" file
+  lineinfile:
+    dest: /home/oracle/.bash_profile
+    regexp: ''
+    insertafter: EOF
+    line: '. /home/oracle/scripts/setEnv.sh'
+
+- name: copy start_all file in /home/oracle/scripts
+  copy:
+    src: start_all.sh
+    dest: /home/oracle/scripts
+    owner: oracle
+    group: oinstall
+    mode: u=rwx,g=r,o=r
+
+- name: copy stop_all file in /home/oracle/scripts
+  copy:
+    src: stop_all.sh
+    dest: /home/oracle/scripts
+    owner: oracle
+    group: oinstall
+    mode: u=rwx,g=r,o=r
+

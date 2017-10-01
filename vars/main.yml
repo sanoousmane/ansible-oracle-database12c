@@ -25,3 +25,4 @@ packages_required:
   - unixODBC
   - unixODBC-devel
   - zlib-devel
+  - compat-libcap1
